@@ -206,10 +206,10 @@ const UserDashboard = () => {
                       />
                       <div className="flex-1">
                         <h3 className="font-bold text-lg text-gray-900">{photographer.user.full_name}</h3>
-                        <p className="text-sm text-gray-600 flex items-center">
+                        <div className="text-sm text-gray-600 flex items-center">
                           <MapPin className="w-3 h-3 mr-1" />
                           {photographer.profile.location}
-                        </p>
+                        </div>
                       </div>
                     </div>
                     <p className="text-sm text-gray-600 line-clamp-2 mb-4">{photographer.profile.bio}</p>
