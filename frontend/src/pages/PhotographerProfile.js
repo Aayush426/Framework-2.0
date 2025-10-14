@@ -88,10 +88,10 @@ const PhotographerProfile = () => {
               />
               <div className="flex-1">
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">{profile.user_id}</h1>
-                <p className="text-gray-600 flex items-center mb-3">
+                <div className="text-gray-600 flex items-center mb-3">
                   <MapPin className="w-4 h-4 mr-1" />
                   {profile.location}
-                </p>
+                </div>
                 <p className="text-gray-700 mb-4">{profile.bio}</p>
                 <div className="flex flex-wrap gap-2">
                   {profile.specialties.map((specialty, idx) => (
