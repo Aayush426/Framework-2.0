@@ -1,3 +1,4 @@
+# ✅ Imports 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -12,9 +13,47 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import jwt
 from passlib.context import CryptContext
+from pymongo import ReturnDocument
+from api.photographers.portfolios import router as portfolio_router
 
+
+# ✅ Load environment variables
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# ✅ Create FastAPI app (only once)
+app = FastAPI()
+app.include_router(portfolio_router, prefix="/api/photographers", tags=["Portfolios"])
+
+# ✅ Setup CORS
+origins = os.getenv("CORS_ORIGIN", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ✅ Dummy registration route (replace logic later)
+@app.post("/auth/register")
+async def register_user():
+    return {"message": "User registered successfully"}
+
+
+# ✅ Root route
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -29,7 +68,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24 hours
 
 # Create the main app
-app = FastAPI()
+
 api_router = APIRouter(prefix="/api")
 
 # Models
@@ -68,6 +107,8 @@ class PhotographerProfile(BaseModel):
     profile_image: Optional[str] = None
     cover_image: Optional[str] = None
     approval_status: str = "pending"  # pending, approved, rejected
+    country: Optional[str] = None                 # <--- new field
+    social_profiles: Optional[dict] = None        # <--- new field
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PhotographerProfileCreate(BaseModel):
@@ -78,6 +119,9 @@ class PhotographerProfileCreate(BaseModel):
     location: str
     profile_image: Optional[str] = None
     cover_image: Optional[str] = None
+    country: Optional[str] = None                 # <--- new field
+    social_profiles: Optional[dict] = None        # <--- new field
+
 
 class PhotographerProfileUpdate(BaseModel):
     bio: Optional[str] = None
@@ -87,6 +131,8 @@ class PhotographerProfileUpdate(BaseModel):
     location: Optional[str] = None
     profile_image: Optional[str] = None
     cover_image: Optional[str] = None
+country: Optional[str] = None                 # <--- new field
+social_profiles: Optional[dict] = None        # <--- new field
 
 class PortfolioItem(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -237,11 +283,30 @@ async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 # Photographer Profile routes
-@api_router.post("/photographer/profile", response_model=PhotographerProfile)
-async def create_photographer_profile(profile_input: PhotographerProfileCreate, current_user: User = Depends(get_current_user)):
+@api_router.put("/photographer/profile", response_model=PhotographerProfile)
+async def update_photographer_profile(profile_input: PhotographerProfileUpdate, current_user: User = Depends(get_current_user)):
     if current_user.role != "photographer":
-        raise HTTPException(status_code=403, detail="Only photographers can create profiles")
+        raise HTTPException(status_code=403, detail="Only photographers can update profiles")
     
+    update_data = {k: v for k, v in profile_input.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No update data provided")
+    
+    result = await db.photographer_profiles.find_one_and_update(
+        {"user_id": current_user.id},
+        {"$set": update_data},
+        return_document=True,
+        projection={"_id": 0}
+    )
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    
+    if isinstance(result.get('created_at'), str):
+        result['created_at'] = datetime.fromisoformat(result['created_at'])
+    
+    return PhotographerProfile(**result)
+
     # Check if profile exists
     existing_profile = await db.photographer_profiles.find_one({"user_id": current_user.id})
     if existing_profile:
@@ -267,7 +332,68 @@ async def get_my_profile(current_user: User = Depends(get_current_user)):
         profile_doc['created_at'] = datetime.fromisoformat(profile_doc['created_at'])
     
     return PhotographerProfile(**profile_doc)
+@api_router.post("/photographer/profile", response_model=PhotographerProfile)
+async def create_photographer_profile(profile_input: PhotographerProfileCreate, current_user: User = Depends(get_current_user)):
+    if current_user.role != "photographer":
+        raise HTTPException(status_code=403, detail="Only photographers can create profiles")
+    
+    existing_profile = await db.photographer_profiles.find_one({"user_id": current_user.id})
+    if existing_profile:
+        raise HTTPException(status_code=400, detail="Profile already exists")
+    
+    profile_dict = profile_input.model_dump()
+    profile_dict['user_id'] = current_user.id
+    profile_obj = PhotographerProfile(**profile_dict)
+    
+    doc = profile_obj.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    
+    await db.photographer_profiles.insert_one(doc)
+    return profile_obj
+# Photographer Profile create endpoint
+@api_router.post("/photographer/profile", response_model=PhotographerProfile)
+async def create_photographer_profile(profile_input: PhotographerProfileCreate, current_user: User = Depends(get_current_user)):
+    if current_user.role != "photographer":
+        raise HTTPException(status_code=403, detail="Only photographers can create profiles")
 
+    existing_profile = await db.photographer_profiles.find_one({"user_id": current_user.id})
+    if existing_profile:
+        raise HTTPException(status_code=400, detail="Profile already exists")
+
+    profile_dict = profile_input.model_dump()
+    profile_dict['user_id'] = current_user.id
+    profile_obj = PhotographerProfile(**profile_dict)
+
+    doc = profile_obj.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+
+    await db.photographer_profiles.insert_one(doc)
+    return profile_obj
+
+# Photographer Profile update endpoint
+@api_router.put("/photographer/profile", response_model=PhotographerProfile)
+async def update_photographer_profile(profile_input: PhotographerProfileUpdate, current_user: User = Depends(get_current_user)):
+    if current_user.role != "photographer":
+        raise HTTPException(status_code=403, detail="Only photographers can update profiles")
+
+    update_data = {k: v for k, v in profile_input.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No update data provided")
+
+    result = await db.photographer_profiles.find_one_and_update(
+        {"user_id": current_user.id},
+        {"$set": update_data},
+        return_document=ReturnDocument.AFTER,
+        projection={"_id": 0}
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    if isinstance(result.get('created_at'), str):
+        result['created_at'] = datetime.fromisoformat(result['created_at'])
+
+    return PhotographerProfile(**result)
 @api_router.put("/photographer/profile", response_model=PhotographerProfile)
 async def update_photographer_profile(profile_input: PhotographerProfileUpdate, current_user: User = Depends(get_current_user)):
     if current_user.role != "photographer":
@@ -304,25 +430,29 @@ async def get_photographer_profile(photographer_id: str):
     return PhotographerProfile(**profile_doc)
 
 @api_router.get("/photographers", response_model=List[dict])
-async def get_all_photographers():
-    # Get approved photographers with their user info
-    profiles = await db.photographer_profiles.find({"approval_status": "approved"}, {"_id": 0}).to_list(1000)
-    
-    result = []
-    for profile in profiles:
-        user_doc = await db.users.find_one({"id": profile['user_id']}, {"_id": 0, "password": 0})
+async def get_photographers_with_portfolios():
+    photographers_cursor = db.photographer_profiles.find({"approval_status": "approved"})
+    photographers = []
+
+    async for profile_doc in photographers_cursor:
+        profile = dict(profile_doc)
+        profile_id = profile['user_id']
+
+        # Fetch portfolios
+        portfolios_cursor = db.portfolio_items.find({"photographer_id": profile_id}, {"_id": 0})
+        portfolios = [PortfolioItem(**p) async for p in portfolios_cursor]
+        profile['portfolios'] = [p.model_dump() for p in portfolios]
+
+        # Fetch user info
+        user_doc = await db.users.find_one({"id": profile_id}, {"_id": 0, "password": 0})
         if user_doc:
-            if isinstance(profile.get('created_at'), str):
-                profile['created_at'] = datetime.fromisoformat(profile['created_at'])
-            if isinstance(user_doc.get('created_at'), str):
-                user_doc['created_at'] = datetime.fromisoformat(user_doc['created_at'])
-            
-            result.append({
-                "profile": PhotographerProfile(**profile).model_dump(),
-                "user": User(**user_doc).model_dump()
+            photographers.append({
+                "user": user_doc,
+                "profile": profile
             })
-    
-    return result
+
+    return photographers
+
 
 # Portfolio routes
 @api_router.post("/portfolio", response_model=PortfolioItem)

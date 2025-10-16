@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
-import '@/App.css';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import '@/App.css';
 import axios from 'axios';
 import { Toaster } from '@/components/ui/sonner';
 import { toast } from 'sonner';
@@ -14,14 +13,28 @@ import PhotographerDashboard from './pages/PhotographerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import PhotographerProfile from './pages/PhotographerProfile';
 import PhotographerPortfolio from './pages/PhotographerPortfolio';
-
+import 'react-phone-number-input/style.css';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+// Ignore ResizeObserver loop errors
+window.addEventListener('error', (event) => {
+  if (event.message && event.message.includes('ResizeObserver loop')) {
+    event.stopImmediatePropagation();
+    console.warn('ResizeObserver loop error suppressed.');
+  }
+});
 
-// Axios interceptor for auth
+// Suppress ResizeObserver loop errors globally
+window.addEventListener('error', (event) => {
+  if (event.message && event.message.includes('ResizeObserver loop completed')) {
+    event.stopImmediatePropagation();
+  }
+});
+
+// Axios interceptors for authentication
 axios.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -34,7 +47,7 @@ axios.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
+      localStorage.removeItem('access_token');
       localStorage.removeItem('user');
       window.location.href = '/login';
     }
@@ -42,17 +55,20 @@ axios.interceptors.response.use(
   }
 );
 
+// Protected route wrapper
 function ProtectedRoute({ children, allowedRoles }) {
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
-  const token = localStorage.getItem('token');
+  let user = null;
+  const token = localStorage.getItem('access_token');
 
-  if (!token || !user) {
-    return <Navigate to="/login" replace />;
+  try {
+    user = JSON.parse(localStorage.getItem('user'));
+  } catch (err) {
+    user = null;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
-  }
+  if (!token || !user) return <Navigate to="/login" replace />;
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/" replace />;
 
   return children;
 }
@@ -65,7 +81,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
-          
+
           <Route
             path="/user/dashboard"
             element={
@@ -74,7 +90,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          
+
           <Route
             path="/photographer/dashboard"
             element={
@@ -83,7 +99,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          
+
           <Route
             path="/admin/dashboard"
             element={
@@ -92,9 +108,12 @@ function App() {
               </ProtectedRoute>
             }
           />
-          
+
           <Route path="/photographer/:id" element={<PhotographerProfile />} />
           <Route path="/photographer/:id/portfolio" element={<PhotographerPortfolio />} />
+
+          {/* Fallback route */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" richColors />

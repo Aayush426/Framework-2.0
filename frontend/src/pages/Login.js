@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
-import { API, toast } from '@/App';
+import { toast } from 'sonner';
+import API from "../lib/api"; // Axios instance with baseURL
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,22 +17,32 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API}/auth/login`, formData);
+      const response = await API.post('/api/auth/login', formData);
       const { access_token, user } = response.data;
 
-      localStorage.setItem('token', access_token);
+      // Store token & user info
+      localStorage.setItem('access_token', access_token);
       localStorage.setItem('user', JSON.stringify(user));
 
       toast.success('Login successful!');
 
-      // Redirect based on role
-      if (user.role === 'user') {
-        navigate('/user/dashboard');
-      } else if (user.role === 'photographer') {
-        navigate('/photographer/dashboard');
-      } else if (user.role === 'admin') {
-        navigate('/admin/dashboard');
+      // Fetch portfolios after login
+      try {
+        const portfoliosResponse = await API.get('/api/portfolio/my', {
+          headers: { Authorization: `Bearer ${access_token}` }
+        });
+        const portfolios = portfoliosResponse.data;
+        localStorage.setItem('portfolios', JSON.stringify(portfolios));
+        console.log('Fetched portfolios:', portfolios);
+      } catch (portfolioError) {
+        console.error('Error fetching portfolios:', portfolioError.response?.data || portfolioError);
       }
+
+      // Navigate according to role
+      if (user.role === 'user') navigate('/user/dashboard');
+      else if (user.role === 'photographer') navigate('/photographer/dashboard');
+      else if (user.role === 'admin') navigate('/admin/dashboard');
+
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Login failed');
     } finally {
@@ -60,7 +70,6 @@ const Login = () => {
                 <Label htmlFor="email">Email address</Label>
                 <Input
                   id="email"
-                  data-testid="login-email-input"
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -74,7 +83,6 @@ const Login = () => {
                 <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
-                  data-testid="login-password-input"
                   type="password"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -86,7 +94,6 @@ const Login = () => {
             </div>
 
             <Button
-              data-testid="login-submit-btn"
               type="submit"
               disabled={loading}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
@@ -96,9 +103,7 @@ const Login = () => {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Signing in...
                 </>
-              ) : (
-                'Sign in'
-              )}
+              ) : 'Sign in'}
             </Button>
 
             <div className="text-center text-sm">

@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
-import { API, toast } from '@/App';
+import { toast } from 'sonner';
+import API from "../lib/api";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Camera, Loader2 } from 'lucide-react';
+
+// Suppress ResizeObserver loop errors globally
+window.addEventListener('error', (event) => {
+  if (event.message && event.message.includes('ResizeObserver loop')) {
+    event.stopImmediatePropagation();
+    console.warn('ResizeObserver loop error suppressed.');
+  }
+});
 
 const Register = () => {
   const navigate = useNavigate();
@@ -18,6 +26,7 @@ const Register = () => {
     role: 'user'
   });
   const [loading, setLoading] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState({ label: '', color: '' });
 
   useEffect(() => {
     const roleParam = searchParams.get('role');
@@ -26,25 +35,55 @@ const Register = () => {
     }
   }, [searchParams]);
 
+  const handlePasswordChange = (e) => {
+    const value = e.target.value;
+    setFormData({ ...formData, password: value });
+
+    // Determine password strength
+    if (!value) setPasswordStrength({ label: '', color: '' });
+    else if (value.length < 6) setPasswordStrength({ label: 'Too short', color: 'bg-red-600' });
+    else if (/^(?=.*[a-z])(?=.*\d)(?=.*[A-Z])(?=.*[@$!%*?&])/.test(value))
+      setPasswordStrength({ label: 'Strong', color: 'bg-green-600' });
+    else if (/^(?=.*[a-z])(?=.*\d)/.test(value))
+      setPasswordStrength({ label: 'Medium', color: 'bg-yellow-400' });
+    else
+      setPasswordStrength({ label: 'Weak', color: 'bg-red-500' });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const response = await axios.post(`${API}/auth/register`, formData);
+      // Register the user
+      const response = await API.post('/api/auth/register', formData);
       const { access_token, user } = response.data;
 
-      localStorage.setItem('token', access_token);
+      // Save token and user
+      localStorage.setItem('access_token', access_token);
       localStorage.setItem('user', JSON.stringify(user));
 
       toast.success('Registration successful!');
 
-      // Redirect based on role
-      if (user.role === 'user') {
-        navigate('/user/dashboard');
-      } else if (user.role === 'photographer') {
-        navigate('/photographer/dashboard');
+      // Fetch portfolios after registration
+      try {
+        const portfoliosResponse = await API.get('/api/portfolio/my', {
+          headers: { Authorization: `Bearer ${access_token}` }
+        });
+        const portfolios = portfoliosResponse.data;
+        localStorage.setItem('portfolios', JSON.stringify(portfolios));
+        console.log('Fetched portfolios:', portfolios);
+      } catch (portfolioError) {
+        console.error('Error fetching portfolios:', portfolioError.response?.data || portfolioError);
       }
+
+      // Navigate to the appropriate dashboard
+      setTimeout(() => {
+        if (user.role === 'user') navigate('/user/dashboard');
+        else if (user.role === 'photographer') navigate('/photographer/dashboard');
+        else if (user.role === 'admin') navigate('/admin/dashboard');
+      }, 50);
+
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Registration failed');
     } finally {
@@ -54,7 +93,7 @@ const Register = () => {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left side - Form */}
+      {/* Left Form */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
         <div className="w-full max-w-md space-y-8">
           <div>
@@ -72,12 +111,10 @@ const Register = () => {
                 <Label htmlFor="full_name">Full Name</Label>
                 <Input
                   id="full_name"
-                  data-testid="register-fullname-input"
                   type="text"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                   required
-                  className="mt-1"
                   placeholder="John Doe"
                 />
               </div>
@@ -86,12 +123,10 @@ const Register = () => {
                 <Label htmlFor="email">Email address</Label>
                 <Input
                   id="email"
-                  data-testid="register-email-input"
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
-                  className="mt-1"
                   placeholder="you@example.com"
                 />
               </div>
@@ -100,15 +135,36 @@ const Register = () => {
                 <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
-                  data-testid="register-password-input"
                   type="password"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={handlePasswordChange}
                   required
-                  className="mt-1"
                   placeholder="••••••••"
-                  minLength={6}
                 />
+                {formData.password && (
+                  <div className="mt-1">
+                    <div className="h-2 w-full bg-gray-200 rounded">
+                      <div
+                        className={`h-2 rounded transition-all duration-300 ${passwordStrength.color}`}
+                        style={{
+                          width:
+                            passwordStrength.label === 'Too short'
+                              ? '25%'
+                              : passwordStrength.label === 'Weak'
+                              ? '33%'
+                              : passwordStrength.label === 'Medium'
+                              ? '66%'
+                              : passwordStrength.label === 'Strong'
+                              ? '100%'
+                              : '0%'
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs mt-1 font-medium text-gray-700">
+                      Strength: {passwordStrength.label}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -117,7 +173,7 @@ const Register = () => {
                   value={formData.role}
                   onValueChange={(value) => setFormData({ ...formData, role: value })}
                 >
-                  <SelectTrigger data-testid="register-role-select" className="mt-1">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -128,12 +184,7 @@ const Register = () => {
               </div>
             </div>
 
-            <Button
-              data-testid="register-submit-btn"
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
-            >
+            <Button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -154,7 +205,7 @@ const Register = () => {
         </div>
       </div>
 
-      {/* Right side - Image */}
+      {/* Right Image */}
       <div className="hidden lg:block lg:w-1/2 relative">
         <img
           src="https://images.unsplash.com/photo-1452587925148-ce544e77e70d?w=1200&q=80"
