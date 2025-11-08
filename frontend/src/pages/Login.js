@@ -11,44 +11,65 @@ const Login = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  try {
+    const response = await API.post('/api/auth/login', formData);
+    const data = response.data;
 
-    try {
-      const response = await API.post('/api/auth/login', formData);
-      const { access_token, user } = response.data;
+    // ✅ Check if restricted
+   if (data.restricted) {
+  localStorage.setItem('user', JSON.stringify({
+    restricted: true,
+    restriction_reason: data.restriction_reason,
+    message: data.message,
+  }));
+  toast.error('You are restricted by admin.');
+  navigate('/restricted');
+  return;
+}
 
-      // Store token & user info
-      localStorage.setItem('access_token', access_token);
-      localStorage.setItem('user', JSON.stringify(user));
+    // ✅ Normal login
+    const { access_token, user } = data;
+    localStorage.setItem('access_token', access_token);
+    localStorage.setItem('user', JSON.stringify(user));
 
-      toast.success('Login successful!');
+    // Store photographer_id if applicable
+    if (user.role === 'photographer' && user.photographer_id) {
+      localStorage.setItem('photographer_id', user.photographer_id);
+    } else {
+      localStorage.removeItem('photographer_id');
+    }
 
-      // Fetch portfolios after login
+    toast.success('Login successful!');
+
+    // Fetch portfolios for photographers
+    if (user.role === 'photographer') {
       try {
         const portfoliosResponse = await API.get('/api/portfolio/my', {
           headers: { Authorization: `Bearer ${access_token}` }
         });
-        const portfolios = portfoliosResponse.data;
-        localStorage.setItem('portfolios', JSON.stringify(portfolios));
-        console.log('Fetched portfolios:', portfolios);
+        localStorage.setItem('portfolios', JSON.stringify(portfoliosResponse.data));
       } catch (portfolioError) {
         console.error('Error fetching portfolios:', portfolioError.response?.data || portfolioError);
       }
-
-      // Navigate according to role
-      if (user.role === 'user') navigate('/user/dashboard');
-      else if (user.role === 'photographer') navigate('/photographer/dashboard');
-      else if (user.role === 'admin') navigate('/admin/dashboard');
-
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Login failed');
-    } finally {
-      setLoading(false);
     }
-  };
+
+    // Navigate according to role
+    if (user.role === 'user') navigate('/user/dashboard');
+    else if (user.role === 'photographer') navigate('/photographer/dashboard');
+    else if (user.role === 'admin') navigate('/admin/dashboard');
+
+  } catch (error) {
+    console.error(error);
+    toast.error(error.response?.data?.detail || 'Login failed');
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen flex">

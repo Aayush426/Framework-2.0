@@ -4,7 +4,7 @@ import axios from 'axios';
 import { API, toast } from '@/App';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Camera, LogOut, Plus, Trash2, Loader2, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { Camera, LogOut, Plus, Trash2, Loader2, AlertCircle, CheckCircle, Clock, MapPin, Globe, User } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { FaInstagram, FaLinkedin, FaFacebook, FaTwitter, FaGithub } from "react-icons/fa";
+import countriesJson from '../data/country_dial_info.json';
 
 const PREDEFINED_CATEGORIES = ['Wedding', 'Portrait', 'Event', 'Commercial', 'Nature', 'Fashion', 'Sports', 'Food'];
 
@@ -25,8 +27,12 @@ const PhotographerDashboard = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showPortfolioModal, setShowPortfolioModal] = useState(false);
   const [showPackageModal, setShowPackageModal] = useState(false);
-  const [loading, setLoading] = useState(false);
-  
+  const [loading, setLoading] = useState(true);
+  const [aboutMe, setAboutMe] = useState(null);
+const [reviews, setReviews] = useState([]);
+const [reports, setReports] = useState([]);
+const [notifications, setNotifications] = useState([]);
+
   const [profileForm, setProfileForm] = useState({
     bio: '',
     specialties: [],
@@ -54,30 +60,95 @@ const PhotographerDashboard = () => {
     deliverables: []
   });
 
+  const socialPlatforms = {
+    instagram: { 
+      icon: FaInstagram, 
+      color: 'text-pink-600',
+      bgColor: 'bg-pink-50',
+      borderColor: 'border-pink-200',
+      displayName: 'Instagram'
+    },
+    linkedin: { 
+      icon: FaLinkedin, 
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200',
+      displayName: 'LinkedIn'
+    },
+    facebook: { 
+      icon: FaFacebook, 
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200',
+      displayName: 'Facebook'
+    },
+    twitter: { 
+      icon: FaTwitter, 
+      color: 'text-blue-400',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200',
+      displayName: 'Twitter'
+    },
+    github: { 
+      icon: FaGithub, 
+      color: 'text-gray-800',
+      bgColor: 'bg-gray-50',
+      borderColor: 'border-gray-200',
+      displayName: 'GitHub'
+    },
+  };
+
   const [specialtyInput, setSpecialtyInput] = useState('');
   const [deliverableInput, setDeliverableInput] = useState('');
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-      fetchProfile();
-      fetchPortfolio();
-      fetchPackages();
-      fetchBookings();
+  const userData = localStorage.getItem('user');
+  if (userData) {
+    const parsedUser = JSON.parse(userData);
+    setUser(parsedUser);
+
+    // Existing data fetches
+    fetchProfile();
+    fetchPortfolio();
+    fetchPackages();
+    fetchBookings();
+    fetchAboutMe(parsedUser);
+
+    // ✨ New feedback data fetch
+   fetchFeedback(parsedUser.id);
+  }
+  
+}, []);
+
+
+  const fetchAboutMe = async (userData) => {
+    if (!userData) return;
+    
+    setLoading(true);
+    try {
+      const res = await axios.get(`${API}/about-me/${userData.id}`);
+      setAboutMe(res.data);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setAboutMe(null);
+      } else {
+        console.error("Failed to fetch About Me:", err);
+      }
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
   const fetchProfile = async () => {
     try {
       const response = await axios.get(`${API}/photographer/profile/me`);
       setProfile(response.data);
       setProfileForm({
-        bio: response.data.bio,
-        specialties: response.data.specialties,
-        experience_years: response.data.experience_years,
-        phone: response.data.phone,
-        location: response.data.location,
+        bio: response.data.bio || '',
+        specialties: response.data.specialties || [],
+        experience_years: response.data.experience_years || 0,
+        phone: response.data.phone || '',
+        location: response.data.location || '',
         profile_image: response.data.profile_image || '',
         cover_image: response.data.cover_image || ''
       });
@@ -140,6 +211,37 @@ const PhotographerDashboard = () => {
       setLoading(false);
     }
   };
+const fetchFeedback = async (photographerId) => {
+  try {
+    console.log("Fetching feedback for photographer:", photographerId);
+
+    const [reviewsRes, reportsRes, notificationsRes] = await Promise.all([
+      axios.get(`${API}/reviews/${photographerId}`).catch((err) => {
+        console.error("Reviews fetch failed:", err.response?.data || err.message);
+        return { data: [] };
+      }),
+      axios.get(`${API}/reports/photographer/${photographerId}`).catch((err) => {
+        console.error("Reports fetch failed:", err.response?.data || err.message);
+        return { data: [] };
+      }),
+      axios.get(`${API}/notifications/photographer/${photographerId}`).catch((err) => {
+        console.error("Notifications fetch failed:", err.response?.data || err.message);
+        return { data: [] };
+      }),
+    ]);
+
+    setReviews(reviewsRes.data || []);
+    setReports(reportsRes.data || []);
+    setNotifications(notificationsRes.data || []);
+
+    console.log("Feedback data fetched successfully");
+  } catch (error) {
+    console.error("Error fetching feedback data:", error);
+    toast.error("Unable to fetch your feedback data");
+  }
+};
+
+
 
   const handlePortfolioSubmit = async (e) => {
     e.preventDefault();
@@ -265,6 +367,51 @@ const PhotographerDashboard = () => {
     }
   };
 
+  const getCountryFlag = (countryCode) => {
+    const country = countriesJson.find(c => c.code === countryCode || c.name === countryCode);
+    return country ? country.emoji : '🏳️';
+  };
+
+  const getCountryName = (countryCode) => {
+    const country = countriesJson.find(c => c.code === countryCode || c.name === countryCode);
+    return country ? country.name : countryCode;
+  };
+
+  const getSocialPlatformInfo = (url) => {
+    const platformKey = Object.keys(socialPlatforms).find((key) =>
+      url.toLowerCase().includes(key)
+    );
+    
+    if (platformKey) {
+      return {
+        ...socialPlatforms[platformKey],
+        platformKey
+      };
+    }
+    
+    // For unknown platforms, try to extract domain name
+    try {
+      const domain = new URL(url).hostname.replace('www.', '');
+      return {
+        icon: Globe,
+        color: 'text-gray-600',
+        bgColor: 'bg-gray-50',
+        borderColor: 'border-gray-200',
+        displayName: domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1),
+        platformKey: 'website'
+      };
+    } catch {
+      return {
+        icon: Globe,
+        color: 'text-gray-600',
+        bgColor: 'bg-gray-50',
+        borderColor: 'border-gray-200',
+        displayName: 'Website',
+        platformKey: 'website'
+      };
+    }
+  };
+
   const groupedPortfolio = portfolioItems.reduce((acc, item) => {
     if (!acc[item.category]) {
       acc[item.category] = [];
@@ -272,6 +419,14 @@ const PhotographerDashboard = () => {
     acc[item.category].push(item);
     return acc;
   }, {});
+
+  if (loading && !user) {
+    return (
+      <div className="max-w-7xl mx-auto px-6 py-8 text-center text-gray-500">
+        Loading Dashboard...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -339,6 +494,8 @@ const PhotographerDashboard = () => {
             <TabsTrigger data-testid="portfolio-tab" value="portfolio">Portfolio</TabsTrigger>
             <TabsTrigger data-testid="packages-tab" value="packages">Packages</TabsTrigger>
             <TabsTrigger data-testid="bookings-tab" value="bookings">Bookings</TabsTrigger>
+<TabsTrigger value="feedback">Feedback</TabsTrigger>
+         
           </TabsList>
 
           {/* Profile Tab */}
@@ -346,13 +503,28 @@ const PhotographerDashboard = () => {
             <div className="bg-white p-8 rounded-xl shadow-sm border">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold">My Profile</h2>
-                <Button
-                  data-testid="edit-profile-btn"
-                  onClick={() => setShowProfileModal(true)}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white"
-                >
-                  {profile ? 'Edit Profile' : 'Create Profile'}
-                </Button>
+                <div className="flex gap-4">
+                  <Button
+                    onClick={() =>
+                      navigate(
+                        aboutMe
+                          ? "/photographer/about-me/edit"
+                          : "/photographer/about-me/create"
+                      )
+                    }
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {aboutMe ? "Edit About Me" : "Create About Me"}
+                  </Button>
+
+                  <Button
+                    data-testid="edit-profile-btn"
+                    onClick={() => setShowProfileModal(true)}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {profile ? 'Edit Profile' : 'Create Profile'}
+                  </Button>
+                </div>
               </div>
 
               {profile ? (
@@ -610,7 +782,226 @@ const PhotographerDashboard = () => {
               )}
             </div>
           </TabsContent>
+          {/* Feedback Tab */}
+<TabsContent value="feedback">
+  <div className="space-y-8">
+    <h2 className="text-2xl font-bold">Reports & Reviews</h2>
+
+    {/* Admin Notifications */}
+    <div>
+      <h3 className="text-lg font-semibold text-gray-800 mb-3">Admin Notifications</h3>
+      {notifications.length === 0 ? (
+        <div className="bg-white p-8 rounded-xl text-center border shadow-sm">
+          <p className="text-gray-500">No notifications yet.</p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-6">
+          {notifications.map((n) => (
+            <div key={n.id} className="bg-white p-6 rounded-xl border shadow-sm">
+              <p className="text-sm text-gray-700">{n.message}</p>
+              <p className="text-xs text-gray-400 mt-2">
+                {new Date(n.timestamp).toLocaleString()}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+    {/* Reports */}
+    <div>
+      <h3 className="text-lg font-semibold text-gray-800 mb-3">Reports Filed Against You</h3>
+      {reports.length === 0 ? (
+        <div className="bg-white p-8 rounded-xl text-center border shadow-sm">
+          <p className="text-gray-500">No reports found.</p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-6">
+          {reports.map((r) => (
+            <div key={r.id} className="bg-white p-6 rounded-xl border shadow-sm">
+              <div className="flex justify-between items-center mb-2">
+                <p className="font-semibold text-gray-900">{r.reason}</p>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${
+                    r.status === "reviewed"
+                      ? "bg-green-100 text-green-700"
+                      : "bg-yellow-100 text-yellow-700"
+                  }`}
+                >
+                  {r.status}
+                </span>
+              </div>
+              <p className="text-sm text-gray-700">{r.description || "No details provided."}</p>
+              <p className="text-xs text-gray-400 mt-2">
+                {new Date(r.created_at).toLocaleString()}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+
+    {/* Reviews */}
+    <div>
+      <h3 className="text-lg font-semibold text-gray-800 mb-3">Client Reviews</h3>
+      {reviews.length === 0 ? (
+        <div className="bg-white p-8 rounded-xl text-center border shadow-sm">
+          <p className="text-gray-500">No reviews received yet.</p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 gap-6">
+          {reviews.map((review) => (
+            <div key={review.id} className="bg-white p-6 rounded-xl border shadow-sm">
+              <div className="flex justify-between items-center mb-2">
+                <h4 className="font-semibold text-gray-900">
+                 {review.reviewer?.full_name || "Anonymous Client"}
+
+                </h4>
+                <div className="flex">
+                  {[...Array(5)].map((_, i) => (
+                    <span
+                      key={i}
+                      className={`text-yellow-400 ${
+                        i < review.rating ? "opacity-100" : "opacity-30"
+                      }`}
+                    >
+                      ★
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <p className="text-sm text-gray-700">{review.review_text || "No comment provided."}</p>
+              <p className="text-xs text-gray-400 mt-2">
+                {new Date(review.created_at).toLocaleString()}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+</TabsContent>
+
         </Tabs>
+
+        {/* About Me Section - Beautiful Profile Card */}
+        <div className="mt-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">About Me</h2>
+          
+          </div>
+
+          {!aboutMe ? (
+            <div className="bg-white rounded-2xl shadow-sm border p-12 text-center">
+              <User className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">No About Me Profile</h3>
+              <p className="text-gray-500 mb-6">Share your story and connect with clients</p>
+              <Button
+                onClick={() => navigate("/photographer/about-me/create")}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Create About Me
+              </Button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+              {/* Header Section */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-20 h-20 bg-white rounded-full shadow-md flex items-center justify-center">
+                      {aboutMe.country ? (
+                        <span className="text-4xl">{getCountryFlag(aboutMe.country)}</span>
+                      ) : (
+                        <Globe className="w-10 h-10 text-gray-400" />
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-bold text-gray-900">{user?.full_name}</h3>
+                      {aboutMe.country && (
+                        <div className="flex items-center space-x-2 mt-1">
+                          <MapPin className="w-4 h-4 text-gray-500" />
+                          <span className="text-gray-600 font-medium">
+                            {getCountryName(aboutMe.country)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Content Section */}
+              <div className="p-8 space-y-6">
+                {/* Story Section */}
+                {aboutMe.about && (
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                      <User className="w-5 h-5 mr-2 text-blue-600" />
+                      My Story
+                    </h4>
+                    <p className="text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
+                      {aboutMe.about}
+                    </p>
+                  </div>
+                )}
+
+                {/* Languages Section */}
+                {aboutMe.languages?.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                      <Globe className="w-5 h-5 mr-2 text-green-600" />
+                      Languages
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {aboutMe.languages.map((lang, index) => (
+                        <span
+                          key={index}
+                          className="px-4 py-2 bg-green-100 text-green-800 rounded-full text-sm font-medium border border-green-200"
+                        >
+                          {lang}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Social Links Section */}
+                {aboutMe.social_links?.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                      <Camera className="w-5 h-5 mr-2 text-purple-600" />
+                      Connect With Me
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {aboutMe.social_links.map((url, index) => {
+                        const platformInfo = getSocialPlatformInfo(url);
+                        const Icon = platformInfo.icon;
+                        
+                        return (
+                          <a
+                            key={index}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-center space-x-3 p-3 ${platformInfo.bgColor} rounded-lg border ${platformInfo.borderColor} hover:bg-white hover:shadow-md transition-all duration-200 group`}
+                          >
+                            <div className={`p-2 rounded-lg bg-white group-hover:scale-110 transition-transform ${platformInfo.color}`}>
+                              <Icon className="w-5 h-5" />
+                            </div>
+                            <span className="text-sm font-medium flex-1">
+                              {platformInfo.displayName}
+                            </span>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Profile Modal */}
@@ -1008,6 +1399,6 @@ const PhotographerDashboard = () => {
       </Dialog>
     </div>
   );
-};
+}
 
 export default PhotographerDashboard;

@@ -79,3 +79,9 @@ button:active {
 .fade-in {
   animation: fadeIn 0.5s ease;
 }
+
+/* ✅ Radix UI fix — prevents ResizeObserver loop error */
+/* ✅ Fix dropdown width shrink caused by containment */
+[data-radix-popper-content-wrapper] {
+  contain: layout size style !important;
+}

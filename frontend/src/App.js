@@ -13,21 +13,21 @@ import PhotographerDashboard from './pages/PhotographerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
 import PhotographerProfile from './pages/PhotographerProfile';
 import PhotographerPortfolio from './pages/PhotographerPortfolio';
+import AboutMe from './pages/aboutMe';
+import RestrictedPage from "@/pages/RestrictedPage";
+
+<Route path="/restricted" element={<RestrictedPage />} />
+
 import 'react-phone-number-input/style.css';
+
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+
 // Ignore ResizeObserver loop errors
 window.addEventListener('error', (event) => {
   if (event.message && event.message.includes('ResizeObserver loop')) {
     event.stopImmediatePropagation();
     console.warn('ResizeObserver loop error suppressed.');
-  }
-});
-
-// Suppress ResizeObserver loop errors globally
-window.addEventListener('error', (event) => {
-  if (event.message && event.message.includes('ResizeObserver loop completed')) {
-    event.stopImmediatePropagation();
   }
 });
 
@@ -62,7 +62,7 @@ function ProtectedRoute({ children, allowedRoles }) {
 
   try {
     user = JSON.parse(localStorage.getItem('user'));
-  } catch (err) {
+  } catch {
     user = null;
   }
 
@@ -112,6 +112,24 @@ function App() {
           <Route path="/photographer/:id" element={<PhotographerProfile />} />
           <Route path="/photographer/:id/portfolio" element={<PhotographerPortfolio />} />
 
+          {/* About Me Routes */}
+          <Route
+            path="/photographer/about-me/create"
+            element={
+              <ProtectedRoute allowedRoles={['photographer']}>
+                <AboutMe mode="create" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/photographer/about-me/edit"
+            element={
+              <ProtectedRoute allowedRoles={['photographer']}>
+                <AboutMe mode="edit" />
+              </ProtectedRoute>
+            }
+          />
+
           {/* Fallback route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -121,5 +139,5 @@ function App() {
   );
 }
 
-export default App;
 export { API, toast };
+export default App;
